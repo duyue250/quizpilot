@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: 语法校验（服务端 + 插件 + 工具）
+        run: |
+          node --check server/ai-answer-server.js
+          node --check userscript/quizpilot.user.js
+          node --check userscript/ocs-ai-autoplay.user.js
+          node --check proxy/gen-config.js
+          node --check test/mock-upstream.js
+      - name: 冒烟测试（假上游 + 全链路答题）
+        run: |
+          node test/mock-upstream.js > /dev/null 2>&1 &
+          sleep 1
+          node server/ai-answer-server.js > /dev/null 2>&1 &
+          sleep 2
+          curl -sf http://127.0.0.1:8787/health | grep -o '"ok":true'
+          curl -sf -X POST http://127.0.0.1:8787/answer \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"下列哪个协议用于网页传输？","options":["FTP","HTTP","SMTP","SSH"],"type":"single"}' \
+            | grep -o '"ok":true'
+          curl -sf -X POST http://127.0.0.1:8787/ocs/search \
+            -H 'Content-Type: application/json' \
+            -d '{"title":"HTTP是无状态协议。","type":"judge"}' \
+            | grep -o '"code":200'
