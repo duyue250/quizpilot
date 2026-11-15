@@ -434,7 +434,7 @@ const server = http.createServer(async (req, res) => {
   // ---- 健康检查 ----
   if (p === '/health') {
     return json(res, 200, {
-      ok: true, version: '3.2.0', uptime: (Date.now() - stats.startTime) / 1000,
+      ok: true, version: '3.3.0', uptime: (Date.now() - stats.startTime) / 1000,
       stats, upstreamStats: upstreamStatsView(),
       accessKeyRequired: !!String(cfg.accessKey || '').trim(),
       upstreams: liveUpstreams().map(x => ({ name: x.name, vision: !!x.vision, circuit: !upstreamAvailable(x) }))

@@ -5,7 +5,7 @@
 > 网课 AI 答题领航工具 —— 整卷扫描 · 图片题视觉识别 · 答案卡片 · 选项高亮 · 服务状态监测
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.2.0-fbbf24.svg)](userscript/quizpilot.user.js)
+[![Version](https://img.shields.io/badge/version-3.3.0-fbbf24.svg)](userscript/quizpilot.user.js)
 [![Server](https://img.shields.io/badge/server-Node.js%20零依赖-34d399.svg)](server/ai-answer-server.js)
 [![平台](https://img.shields.io/badge/平台-学习通/智慧树/职教云/MOOC-1f2b45.svg)](#支持平台)
 

@@ -19,6 +19,8 @@ jobs:
           node --check userscript/quizpilot.user.js
           node --check proxy/gen-config.js
           node --check test/mock-upstream.js
+      - name: 单元测试（直连答案解析）
+        run: node test/unit-test.js
       - name: 冒烟测试（假上游 + 全链路答题）
         run: |
           node test/mock-upstream.js > /dev/null 2>&1 &
