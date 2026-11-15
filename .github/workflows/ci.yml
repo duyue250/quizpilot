@@ -24,6 +24,13 @@ jobs:
         run: |
           node test/mock-upstream.js > /dev/null 2>&1 &
           sleep 1
+          # CI 无 config.json（gitignore），生成指向假上游的测试配置
+          cat > server/config.json <<'EOF'
+          {
+            "port": 8787,
+            "upstreams": [{ "name": "mock", "baseUrl": "http://127.0.0.1:18787/v1", "apiKey": "sk-mock", "model": "mock-model", "vision": true }]
+          }
+          EOF
           node server/ai-answer-server.js > /dev/null 2>&1 &
           sleep 2
           curl -sf http://127.0.0.1:8787/health | grep -o '"ok":true'
