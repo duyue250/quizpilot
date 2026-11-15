@@ -7,7 +7,7 @@
 | 接口 | 方法 | 用途 |
 |---|---|---|
 | `/answer` | POST | 通用答题：`{title, options[], type, images[dataURL]}` → `{ok, answer[], reason, via, ms, cache}` |
-| `/ocs/search` | POST | OCS AnswererWrapper 专用：`{title, type, options}` → `{code:200, answer[], judge}` |
+| `/tiku/search` | POST | 自定义题库配置入口：`{title, type, options}` → `{code:200, answer[], judge}`（`/ocs/search` 为兼容别名） |
 | `/search/text` | POST | 兼容旧自定义题库协议 → `{code:200/201, answer[]}` |
 | `/search/img` | POST | 图片题：`{images[dataURL]}` → `{code, answer[]}` |
 | `/config` | GET/POST | 设置向导：读取/热更新上游与 accessKey（POST 可选 `saveToDisk` 写入 config.json） |
@@ -25,7 +25,7 @@ URL    ?key=你的密钥
 请求体  {"accessKey": "你的密钥", ...}
 ```
 
-未带或错误 → `/answer` 返回 HTTP 401；OCS 兼容接口返回 `{code:201}`（OCS 视为无答案）。
+未带或错误 → `/answer` 返回 HTTP 401；题库兼容接口返回 `{code:201}`（调用方视为无答案）。
 `/health`、控制台页面不鉴权（仅本机查看状态用）。
 
 ## 答案溯源字段
@@ -36,9 +36,9 @@ URL    ?key=你的密钥
 `type` 取值：`single` 单选 / `multi` 多选 / `judge` 判断 / `completion` 填空 / `unknown`。
 返回 `answer` 永远是数组；判断题双写 `["正确","对","是","true"]` 提高各平台匹配率。
 
-## OCS 自定义题库配置
+## 通用「自定义题库」配置
 
-OCS 面板 → 题库设置 → 自定义题库，粘贴 [ocs-tiku-config.json](../ocs-tiku-config.json)：
+各类网课助手（支持自定义题库的）→ 题库设置 → 自定义题库，粘贴 [tiku-config.json](../tiku-config.json)：
 
 ```json
 [{
@@ -52,7 +52,7 @@ OCS 面板 → 题库设置 → 自定义题库，粘贴 [ocs-tiku-config.json](
 }]
 ```
 
-协议依据 OCS 官方 [AnswererWrapper 文档](https://docs.ocsjs.com/docs/other/api.md#answererwrapper-题库配置)。
+配置格式为网课助手社区通用的「自定义题库」公开约定（占位符 + handler 解析函数）。
 
 ## 答题正确率怎么提
 
@@ -65,7 +65,7 @@ OCS 面板 → 题库设置 → 自定义题库，粘贴 [ocs-tiku-config.json](
 
 | 现象 | 处理 |
 |---|---|
-| OCS 搜题一直「未搜索到答案」 | 开控制台手动发一道题看报错；多数是上游地址/key 不对 |
+| 助手搜题一直「未搜索到答案」 | 开控制台手动发一道题看报错；多数是上游地址/key 不对 |
 | 上游报 401/403 | key 错或反代没放行 `/v1/chat/completions`；反代登录态过期重新登录/扫码 |
 | 图片题答非所问 | 上游模型没视觉能力，换 `vision: true` 的模型 |
 | 插件悬浮球不出现 | 油猴是否启用；面板「本站是否被禁用」；页面 iframe 场景已支持 |

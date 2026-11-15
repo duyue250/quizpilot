@@ -9,7 +9,7 @@
 [![Server](https://img.shields.io/badge/server-Node.js%20零依赖-34d399.svg)](server/ai-answer-server.js)
 [![平台](https://img.shields.io/badge/平台-学习通/智慧树/职教云/MOOC-1f2b45.svg)](#支持平台)
 
-**原创独立实现**（MIT）。与 [OCS 网课助手](https://github.com/ocsjs/ocsjs) 通过其官方公开的「自定义题库协议」互操作，未使用其源码；详见 [NOTICE.md](NOTICE.md) 与 [发布合规说明](RELEASE.md)。
+**原创独立实现**（MIT）。服务端兼容网课助手社区通用的「自定义题库」配置约定，可与各类答题助手配合使用；详见 [NOTICE.md](NOTICE.md) 与 [发布合规说明](RELEASE.md)。
 
 ---
 
@@ -27,43 +27,39 @@
 | 👀 | **仅查看模式**：只弹答案卡片不自动点选，手动确认再答 |
 | ⌨️ | **快捷键**：Alt+Q 开关自动答题 / Alt+B 整卷一轮 / Alt+P 切换仅查看 |
 | 🩺 | **诊断导出**：一键生成环境+日志诊断包，贴 issue 好排查 |
-| 🤝 | **OCS 协同**：检测到 OCS 面板自动待机，双引擎不打架 |
-| 🧩 | **双接入**：独立油猴插件，或作为 OCS 自定义题库（二选一或叠加） |
+| 🤝 | **助手协同**：检测到页面上有其他答题助手时自动待机，双引擎不打架 |
+| 🧩 | **双接入**：独立油猴插件，或作为通用「自定义题库」后端（二选一或叠加） |
 | ⚙️ | **设置向导**：服务端控制台网页里测连通、热更新上游配置 |
 
-## 📦 安装
+## 📦 安装（普通用户 2 分钟搞定）
 
-### 前置：本地服务端（必装）
+### 第 1 步：装插件（篡改猴 / 脚本猫）
 
-```bash
-# 1. clone 本仓库（或下载 zip 解压）
-# 2. Windows 双击 start-server.bat；或命令行：
-node server/ai-answer-server.js
-# 3. 打开 http://127.0.0.1:8787/ —— QuizPilot 控制台（设置向导）
-```
+1. 浏览器装 [篡改猴 Tampermonkey](https://www.tampermonkey.net/) 或 [脚本猫 ScriptCat](https://scriptcat.org/) 扩展；
+2. 打开本仓库 [userscript/quizpilot.user.js](userscript/quizpilot.user.js) → 点「原始文件(Raw)」→ 管理器自动弹出安装页 → 点安装；
+3. 完成。装完**不需要装 Node、不需要跑任何 bat**。
 
-控制台里接入你的 AI（三选一）：
+### 第 2 步：填一个 AI Key（唯一要动手的事）
 
-| 方式 | 说明 | 图片题 |
-|---|---|---|
-| 有现成 Key | 官方 API / 中转站，填 baseUrl + Key | 模型带视觉即可 |
-| DeepSeek 网页版反代 | 免费；`proxy/deploy-deepseek.bat` 一键部署 | ❌ 纯文字 |
-| 豆包网页版反代 | 免费；**手机 App 扫码登录**；`proxy/deploy-doubao.bat` | ✅ 支持 |
+打开任意网课页面，右下角出现**罗盘悬浮球**（带红点脉冲 = 还没配置）：
 
-详见 [proxy/README.md](proxy/README.md)（各反代项目的登录方式与部署步骤）。
+1. 点开面板 → 「第一步：接入你的 AI」默认就是**直连模式**；
+2. 填一个 OpenAI 兼容的接口地址 + Key + 模型名，点「测试连通」看到 ✔；
+   - 有 DeepSeek 官方 Key：地址 `https://api.deepseek.com/v1`，模型 `deepseek-chat`；
+   - 用中转站/自建网页版反代：填反代给的地址和 Key；
+   - 想识别图片题：换视觉模型（doubao / gpt-4o / glm-4v）并勾「能看图」；
+3. 点「保存配置」，红点消失 = 就绪。
 
-### 插件本体（二选一或都装）
+### 第 3 步：答题
 
-**A. QuizPilot 独立插件**（推荐，功能最全）
+- 面板勾「自动答题」即全自动；「整卷批量模式」一次答完本页所有题；
+- 或用快捷键：`Alt+Q` 开关自动 / `Alt+B` 整卷一轮 / `Alt+P` 仅查看；
+- 建议第一次先开「仅查看模式」看几题答案对不对，再放开自动点选。
 
-[![ScriptCat 安装](https://img.shields.io/badge/ScriptCat-安装-8f6ce8.svg)](https://scriptcat.org/) [![GreasyFork](https://img.shields.io/badge/GreasyFork-安装-671a1a.svg)](https://greasyfork.org/)
+### 进阶（可选）：本地服务端模式
 
-- 从本仓库装：打开 [userscript/quizpilot.user.js](userscript/quizpilot.user.js) 原始文件，脚本猫/油猴会自动弹出安装；
-- 上架后可直接在 ScriptCat / GreasyFork 页面点安装。
-
-**B. OCS 自定义题库模式**（已用 OCS 的用户）
-
-OCS 面板 → 题库设置 → 自定义题库 → 粘贴 [ocs-tiku-config.json](ocs-tiku-config.json) 内容 → 启用。OCS 负责抓题填答，本服务端负责出答案。
+想要多上游自动切换、全站缓存、每上游统计、把题库共享给别人用，再部署本地服务端：
+`node server/ai-answer-server.js` 或 Windows 双击 [start-server.bat](start-server.bat)，插件面板切到「本地服务端」模式。普通用户可完全忽略这一步。
 
 ## 🚀 使用（独立插件）
 
@@ -84,11 +80,11 @@ OCS 面板 → 题库设置 → 自定义题库 → 粘贴 [ocs-tiku-config.json
 ```
 ├─ userscript/quizpilot.user.js   # 插件本体（油猴/脚本猫）
 ├─ server/                        # 本地答题服务端（Node ≥16，零依赖）
-│  ├─ ai-answer-server.js         #   答题 + OCS 协议 + 设置向导接口
+│  ├─ ai-answer-server.js         #   答题 + 自定义题库协议 + 设置向导接口
 │  ├─ config.example.json         #   配置模板
 │  └─ web/                        #   QuizPilot 控制台（设置向导页）
 ├─ proxy/                         # DeepSeek/豆包反代部署脚本 + 配置生成器
-├─ ocs-tiku-config.json           # OCS 自定义题库配置
+├─ tiku-config.json               # 通用「自定义题库」配置
 ├─ start-server.bat               # Windows 一键启动
 └─ test/mock-upstream.js          # 假上游，开发自测用
 ```
@@ -103,7 +99,7 @@ OCS 面板 → 题库设置 → 自定义题库 → 粘贴 [ocs-tiku-config.json
 
 本脚本为本地学习辅助工具，自动行为均发生在使用者本人账号与页面内；
 使用者应自行遵守所在学校/平台规则，因使用产生的一切后果由使用者自行承担。
-本项目与任何网课平台及 OCS 官方无关。
+本项目与任何网课平台无关。
 
 ## 📄 许可证
 

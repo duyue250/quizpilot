@@ -125,17 +125,17 @@
     <div class="row" id="t-prev" style="margin-top:6px"></div>
     <div class="row" style="margin-top:10px">
       <button id="btnAsk">获取答案</button>
-      <span class="dim">返回的 answer 会同时验证 OCS 协议格式</span>
+      <span class="dim">返回的 answer 同时验证题库协议格式</span>
     </div>
     <pre id="askOut" style="margin-top:10px">等待请求…</pre>
   </div>
 
-  <!-- 第 4 步：接入 OCS / 插件 -->
+  <!-- 第 4 步：接入答题端 -->
   <div class="card">
     <h2><span class="step">4</span> 接到答题端</h2>
     <p style="font-size:13px; line-height:1.9; margin:0">
-      <b>A. OCS 网课助手</b>：OCS 面板 → 题库设置 → 自定义题库，粘贴
-      <code>D:\ocs\ocs-tiku-config.json</code> 内容（无需改动，地址就是本服务）。<br>
+      <b>A. 任意支持「自定义题库」的网课助手</b>：在助手的 题库设置 → 自定义题库 中粘贴
+      <code>tiku-config.json</code> 内容（无需改动，地址就是本服务）。<br>
       <b>B. QuizPilot 插件</b>：油猴安装 <code>userscript\quizpilot.user.js</code>，
       悬浮球里服务端地址保持 <code id="srvUrl">http://127.0.0.1:8787/answer</code> 即可。<br>
       <b>C. 独立调试</b>：本页第 3 步随时可验。

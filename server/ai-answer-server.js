@@ -6,7 +6,7 @@
  *  1. 接收油猴插件/浏览器脚本发来的题目（文本 + 可选图片 base64）
  *  2. 转发给上游 AI（网页版反代 / OpenAI 兼容中转均可，配置成 OpenAI /chat/completions 协议即可）
  *  3. 解析 AI 返回答案，做缓存、并发控制、多上游故障切换
- *  4. 兼容 OCS 网课助手「自定义题库」协议：/search/text  与  /search/img
+ *  4. 兼容网课助手社区通用的「自定义题库」协议：/search/text  与  /search/img
  *
  * 启动：
  *  1) 复制 config.example.json 为 config.json，填好你的反代地址和 key
@@ -237,8 +237,8 @@ function parseAnswer(raw, type) {
 }
 
 /**
- * 按题型规整答案，返回 OCS 兼容格式。
- * 单选/多选统一返回选项数组（与 OCS 自定义题库协议一致），
+ * 按题型规整答案，返回题库配置协议兼容格式。
+ * 单选/多选统一返回选项数组（与自定义题库配置约定一致），
  * 判断返回 ["正确"/"错误"] 或 ["对"/"错"] 双写提高匹配率。
  */
 function normalizeAnswer(parsed, type, options) {
@@ -342,7 +342,7 @@ async function askAI(title, options, imagesBase64, type, depth) {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${u.apiKey || ''}`,
-          'User-Agent': 'ocs-ai-answer-server/1.0'
+          'User-Agent': 'quizpilot-server/1.0'
         }
       }, payload);
 
@@ -413,7 +413,7 @@ const server = http.createServer(async (req, res) => {
       return res.end(html);
     } catch (_) {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      return res.end('<h3>OCS AI 答题服务运行中</h3><p>POST /answer ｜ POST /search/text ｜ POST /search/img</p>');
+      return res.end('<h3>QuizPilot AI 答题服务运行中</h3><p>POST /answer ｜ POST /search/text ｜ POST /search/img</p>');
     }
   }
 
@@ -476,17 +476,17 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  // ---- OCS 自定义题库协议兼容 ----
+  // ---- 自定义题库协议兼容入口 ----
   // 文档: https://docs.ocs.nowo.ai/  自定义题库 request 请求格式
   if (p === '/search/text' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
-      // OCS 传来的字段: title(题目) options(数组, 选项) type(题型)
+      // 请求字段: title(题目) options(数组, 选项) type(题型)
       const title = String(body.title || '').trim();
       const options = Array.isArray(body.options) ? body.options.map(String) : [];
       const type = String(body.type || 'unknown');
-      if (!title) return json(res, 200, { code: 201, msg: '题目为空' }); // OCS 约定 201=无结果
+      if (!title) return json(res, 200, { code: 201, msg: '题目为空' }); // 协议约定 201=无结果
 
       const key = `ocs|${type}|${title}|${options.join('||')}`;
       if (answerCache.has(key)) {
@@ -501,14 +501,14 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { code: 200, ...norm });
     } catch (e) {
       stats.fail++;
-      return json(res, 200, { code: 201, msg: e.message }); // OCS 拿到 201 视为无答案
+      return json(res, 200, { code: 201, msg: e.message }); // 调用方拿到 201 视为无答案
     }
   }
 
-  // ---- OCS AnswererWrapper 专用入口（推荐配合 ocs-tiku-config.json 使用）----
+  // ---- 自定义题库配置专用入口（品牌中立路径 /tiku/search；/ocs/search 为兼容别名）----
   // 请求体: { title, type, options }  options 可能是 "A的文本,B的文本" 或数组
   // 响应体: { code: 200, answer: [...] }  handler 取 res.answer
-  if (p === '/ocs/search' && req.method === 'POST') {
+  if ((p === '/tiku/search' || p === '/ocs/search') && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
@@ -535,7 +535,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, { code: 200, judge: /judge|判断|对错/i.test(type), ...norm });
     } catch (e) {
       stats.fail++;
-      return json(res, 200, { code: 201, msg: e.message }); // OCS 拿到非 200 视为无答案
+      return json(res, 200, { code: 201, msg: e.message }); // 调用方拿到非 200 视为无答案
     }
   }
 
@@ -543,7 +543,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
       if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
-      // OCS 图片题: body.img 或 body.images —— base64 数组
+      // 图片题: body.img 或 body.images —— base64 数组
       const imgs = Array.isArray(body.images) ? body.images : (body.img ? [body.img] : []);
       const title = String(body.title || '').trim();
       if (!imgs.length) return json(res, 200, { code: 201, msg: '无图片' });
@@ -644,7 +644,7 @@ const server = http.createServer(async (req, res) => {
       const url = /\/v\d+$/.test(base) ? `${base}/chat/completions` : `${base}/v1/chat/completions`;
       const res2 = await httpRequest(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${target.apiKey || ''}`, 'User-Agent': 'ocs-ai-answer-server/1.0' }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${target.apiKey || ''}`, 'User-Agent': 'quizpilot-server/1.0' }
       }, payload);
       const ms = Date.now() - t0;
       if (res2.status >= 400) {
@@ -666,10 +666,10 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log('==============================================');
-  console.log('  OCS AI 反代自动答题服务端 已启动');
+  console.log('  QuizPilot 智答领航服务端 已启动');
   console.log(`  本地调试页:  http://127.0.0.1:${PORT}/`);
   console.log(`  答题接口:    http://127.0.0.1:${PORT}/answer`);
-  console.log(`  OCS题库接口: http://127.0.0.1:${PORT}/search/text  |  /search/img`);
+  console.log(`  题库接口: http://127.0.0.1:${PORT}/search/text  |  /search/img`);
   console.log(`  上游数量:    ${liveUpstreams().length}  并发上限: ${MAX_CONCURRENT}`);
   console.log('  下一步: 复制 config.example.json -> config.json 填反代地址');
   console.log('==============================================');

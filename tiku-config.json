@@ -1,8 +1,8 @@
 [
   {
-    "name": "AI反代答题（本地服务端）",
-    "homepage": "http://127.0.0.1:8787/",
-    "url": "http://127.0.0.1:8787/ocs/search",
+    "name": "QuizPilot 智答领航（本地AI题库）",
+    "homepage": "https://github.com/duyue250/quizpilot",
+    "url": "http://127.0.0.1:8787/tiku/search",
     "method": "post",
     "contentType": "json",
     "data": {

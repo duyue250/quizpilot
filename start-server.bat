@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title OCS AI 反代自动答题服务端
+title QuizPilot 智答领航服务端
 cd /d %~dp0
 
 if not exist server\config.json (

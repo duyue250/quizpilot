@@ -2,9 +2,9 @@
 // @name         QuizPilot 智答领航
 // @name:en      QuizPilot
 // @namespace    https://github.com/duyue250/quizpilot
-// @version      3.2.0
-// @description  网课 AI 答题领航工具：整卷扫描、题目图片识别、答案卡片、选项高亮、服务状态监测。配合本地 QuizPilot 服务端使用，支持与 OCS 网课助手协同（通过其公开的自定义题库协议）。
-// @description:en AI quiz assistant for online-course platforms: whole-paper scanning, image questions via vision models, answer cards, option highlighting, server health monitor. Works with a local QuizPilot server; coexists with OCS via its public custom-tiku protocol.
+// @version      3.3.0
+// @description  网课 AI 答题领航：接入你自己的 AI（官方 Key / 中转站 / 网页版反代均可），整卷扫描、图片题识别、答案卡片、选项高亮。装完填 Key 即用，也支持高级的本地服务端模式。
+// @description:en AI quiz assistant for online-course platforms. Bring your own AI (official API key, relay, or self-hosted web reverse proxy): whole-paper scanning, image questions via vision models, answer cards, option highlighting. Works out of the box with just an API key.
 // @author       duyue250
 // @license      MIT
 // @homepageURL  https://github.com/duyue250/quizpilot
@@ -22,6 +22,12 @@
 // @match        *://*.koolearn.com/*
 // @match        *://*.vlearning.com.cn/*
 // @match        *://*.uetc.edu.cn/*
+// @match        *://*.edu.cn/*
+// @match        *://*.icourse163.org/*
+// @match        *://*.yuketang.cn/*
+// @match        *://*.xuetangx.com/*
+// @match        *://*.courshare.cn/*
+// @match        *://*.webtrn.cn/*
 // @match        *://*/*
 // @exclude      *://*.bank.*/*
 // @exclude      *://*.gov.cn/*
@@ -33,7 +39,7 @@
 // @grant        GM_addStyle
 // @connect      *
 // @run-at       document-idle
-// @noframes     true
+// @noframes     false
 // ==/UserScript==
 
 /**
@@ -42,17 +48,36 @@
  * 仓库: https://github.com/duyue250/quizpilot
  * 服务端(必装): 见仓库 README —— node server/ai-answer-server.js
  * ---------------------------------------------------------------
+ * v3.3.0: 品牌独立 —— 文案全面去关联化，协同功能改为通用
+ *         「同类助手协同」检测；发布通道适配脚本猫
  * v3.2.0: 访问密钥鉴权 / 仅查看模式 / 快捷键 Alt+Q·B·P /
  *         诊断导出 / 答案卡片溯源（上游+耗时）
  * v3.1.0: 发布级打磨 —— 双语元数据、自动更新通道、图标、
  *         面板内仓库链接、错误兜底文案优化
  * v3.0.0: 答案卡片 / 服务状态灯 / 选项高亮 / amber 罗盘品牌
- * v2.x:   整卷批量 / 重试 / OCS 协同 / 站点开关 / 配置导入导出
+ * v2.x:   整卷批量 / 重试 / 同类助手协同 / 站点开关 / 配置导入导出
  * ---------------------------------------------------------------
  */
 
 (function () {
   'use strict';
+
+  // ========================= 实例互斥（iframe 场景防多实例打架） =========================
+  // 顶层窗口优先；iframe 只在顶层没有实例时才接管（处理纯 iframe 答题页）
+  try {
+    if (window !== window.top) {
+      let topHasInstance = false;
+      try { topHasInstance = !!(window.top && window.top.__QUIZPILOT_LOADED__); } catch (_) { topHasInstance = false; }
+      if (topHasInstance) return;
+    }
+    window.__QUIZPILOT_LOADED__ = true;
+  } catch (_) { /* 跨域访问顶层失败时按普通页面继续 */ }
+
+  // ========================= GM API 安全层（双管理器兼容兜底） =========================
+  const gmMenu = typeof GM_registerMenuCommand === 'function' ? GM_registerMenuCommand : (() => {});
+  const gmClipboard = typeof GM_setClipboard === 'function'
+    ? GM_setClipboard
+    : (text => { try { navigator.clipboard.writeText(text); } catch (_) {} });
 
   // ========================= 存储 =========================
   const store = (() => {
@@ -64,9 +89,14 @@
   })();
 
   const DEFAULTS = {
+    mode: 'direct',          // direct = 直连AI（装完即用）| server = 本地服务端（功能全）
     serverUrl: 'http://127.0.0.1:8787/answer',
     healthUrl: 'http://127.0.0.1:8787/health',
     accessKey: '',           // 服务端访问密钥（服务端 config.accessKey 启用时填）
+    aiUrl: 'https://api.deepseek.com/v1',  // 直连：OpenAI 兼容 baseUrl（含 /v1）
+    aiKey: '',               // 直连：API Key
+    aiModel: 'deepseek-chat',// 直连：模型名
+    aiVision: false,         // 直连：模型是否支持图片
     enabled: false,
     autoSubmit: false,
     autoNext: false,
@@ -115,6 +145,9 @@
     font-weight:bold; box-shadow:0 4px 16px rgba(245,158,11,.25); user-select:none; font-family:"Microsoft YaHei",sans-serif; }
   #qp-fab.on { box-shadow:0 0 18px rgba(245,158,11,.55); border-color:var(--qp-amber2); }
   #qp-fab.paused { border-color:#f87171; color:#f87171; box-shadow:none; }
+  #qp-fab .qp-nudge { position:absolute; top:-3px; right:-3px; width:14px; height:14px; border-radius:50%;
+    background:#f87171; border:2px solid #0d1524; animation:qpPulse 1.2s ease-in-out infinite; }
+  @keyframes qpPulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.5); opacity:.6; } }
   #qp-panel { position:fixed; right:18px; bottom:80px; z-index:2147483000; width:350px; max-height:74vh; overflow:auto;
     background:var(--qp-bg); color:var(--qp-txt); border:1px solid var(--qp-line); border-radius:14px; padding:14px;
     font-size:13px; box-shadow:0 10px 34px rgba(0,0,0,.55); display:none; font-family:"Microsoft YaHei",sans-serif; }
@@ -191,14 +224,39 @@
     panel = document.createElement('div');
     panel.id = 'qp-panel';
     panel.innerHTML = `
-      <h3>${svgCompass(18)} QuizPilot 智答领航 <span style="font-size:10px;color:var(--qp-dim)">v3.2.0</span>
+      <h3>${svgCompass(18)} QuizPilot 智答领航 <span style="font-size:10px;color:var(--qp-dim)">v3.3.0</span>
         <span style="flex:1"></span><span id="qp-dot"></span></h3>
-      <div class="row" style="color:var(--qp-dim);font-size:11px"><span id="qp-health-text">服务状态检测中…</span>
+      <div class="row" style="color:var(--qp-dim);font-size:11px"><span id="qp-health-text">AI 状态检测中…</span>
         <span style="flex:1"></span><a href="https://github.com/duyue250/quizpilot" target="_blank" style="color:var(--qp-amber2);font-size:11px">GitHub ↗</a></div>
-      <label>服务端地址</label>
-      <input type="text" id="qp-cfg-server" value="${cfg.serverUrl}">
-      <label>访问密钥（服务端启用 accessKey 时填写，可留空）</label>
-      <input type="text" id="qp-cfg-accesskey" value="${cfg.accessKey}">
+
+      <h4>第一步：接入你的 AI</h4>
+      <div class="row" style="gap:4px;flex-wrap:nowrap">
+        <label style="margin:0;flex:1"><input type="radio" name="qp-mode" value="direct" ${cfg.mode !== 'server' ? 'checked' : ''}> <b>直连 AI</b>（填 Key 即用）</label>
+        <label style="margin:0;flex:1"><input type="radio" name="qp-mode" value="server" ${cfg.mode === 'server' ? 'checked' : ''}> 本地服务端（高级）</label>
+      </div>
+      <div id="qp-direct-form">
+        <label>AI 接口地址（OpenAI 兼容，一般以 /v1 结尾）</label>
+        <input type="text" id="qp-cfg-aiurl" value="${cfg.aiUrl}" placeholder="https://api.deepseek.com/v1">
+        <label>API Key（官方 Key / 中转站 Key / 自建反代的 Key）</label>
+        <input type="text" id="qp-cfg-aikey" value="${cfg.aiKey}" placeholder="sk-...">
+        <div class="row" style="gap:8px">
+          <div style="flex:2"><label>模型名</label><input type="text" id="qp-cfg-aimodel" value="${cfg.aiModel}" placeholder="deepseek-chat"></div>
+          <div style="flex:1"><label>&nbsp;</label><label style="margin-top:12px"><input type="checkbox" id="qp-cfg-aivision" ${cfg.aiVision ? 'checked' : ''}> 能看图</label></div>
+        </div>
+        <div class="row"><button class="btn" id="qp-btn-aitest">测试连通</button><span id="qp-aitest-out" style="color:var(--qp-dim);font-size:11px;flex:1"></span></div>
+        <div class="row" style="color:var(--qp-dim);font-size:11px;margin-top:4px">
+          常用直达：DeepSeek官方 api.deepseek.com/v1 ｜ 豆包/Kimi/智谱等中转填对应地址 ｜ 网页版反代填反代地址
+        </div>
+      </div>
+      <div id="qp-server-form" style="display:none">
+        <label>服务端地址</label>
+        <input type="text" id="qp-cfg-server" value="${cfg.serverUrl}">
+        <label>访问密钥（服务端启用 accessKey 时填写，可留空）</label>
+        <input type="text" id="qp-cfg-accesskey" value="${cfg.accessKey}">
+        <div class="row" style="color:var(--qp-dim);font-size:11px">服务端模式：多上游切换/缓存/统计更全，部署见仓库 README</div>
+      </div>
+
+      <h4>答题设置</h4>
       <label>自定义题目容器选择器（可选）</label>
       <input type="text" id="qp-cfg-selector" value="${cfg.questionSelector}">
       <div class="row"><input type="checkbox" id="qp-cfg-enabled" ${cfg.enabled ? 'checked' : ''}><span>自动答题（全局）</span></div>
@@ -208,8 +266,8 @@
       <div class="row"><input type="checkbox" id="qp-cfg-viewonly" ${cfg.viewOnly ? 'checked' : ''}><span>仅查看模式（只弹卡片，不自动点选）</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-submit" ${cfg.autoSubmit ? 'checked' : ''}><span>答完自动提交（谨慎）</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-next" ${cfg.autoNext ? 'checked' : ''}><span>提交后自动下一题</span></div>
-      <div class="row"><input type="checkbox" id="qp-cfg-ocs" ${cfg.coexistOcs ? 'checked' : ''}><span>OCS 协同（检测到 OCS 时待机）</span></div>
-      <div class="row"><input type="checkbox" id="qp-cfg-hotkey" ${cfg.hotkey ? 'checked' : ''}><span>快捷键：Alt+Q 开关自动 / Alt+B 整卷一轮</span></div>
+      <div class="row"><input type="checkbox" id="qp-cfg-ocs" ${cfg.coexistOcs ? 'checked' : ''}><span>同类助手协同（检测到其他答题助手时待机）</span></div>
+      <div class="row"><input type="checkbox" id="qp-cfg-hotkey" ${cfg.hotkey ? 'checked' : ''}><span>快捷键：Alt+Q 开关自动 / Alt+B 整卷一轮 / Alt+P 仅查看</span></div>
       <div class="row">
         <span style="color:var(--qp-dim)">本站（${host}）：</span>
         <button class="btn ghost" id="qp-btn-siteon">启用本站</button>
@@ -246,7 +304,40 @@
       refreshUI();
     });
 
+    // 模式切换显示
+    const syncModeUI = () => {
+      const m = document.querySelector('input[name=qp-mode]:checked')?.value || 'direct';
+      document.getElementById('qp-direct-form').style.display = m === 'direct' ? '' : 'none';
+      document.getElementById('qp-server-form').style.display = m === 'server' ? '' : 'none';
+    };
+    document.querySelectorAll('input[name=qp-mode]').forEach(r => r.addEventListener('change', syncModeUI));
+    syncModeUI();
+
+    // 直连连通测试：真实发一道题
+    document.getElementById('qp-btn-aitest').addEventListener('click', async () => {
+      const out = document.getElementById('qp-aitest-out');
+      const url = document.getElementById('qp-cfg-aiurl').value.trim().replace(/\/+$/, '');
+      const key = document.getElementById('qp-cfg-aikey').value.trim();
+      const model = document.getElementById('qp-cfg-aimodel').value.trim() || 'gpt-4o-mini';
+      if (!url || !key) { out.textContent = '先填地址和 Key'; return; }
+      out.textContent = '测试中…';
+      const t0 = Date.now();
+      const r = await directChat([
+        { role: 'system', content: '输出 JSON：{"answer":"..."}' },
+        { role: 'user', content: '1+1=? 只输出 JSON。' }
+      ], { url, key, model });
+      const ms = Date.now() - t0;
+      out.innerHTML = r.ok
+        ? `<span class="ok" style="color:var(--qp-ok)">✔ ${ms}ms · 回复: ${String(r.reply).slice(0, 40)}</span>`
+        : `<span style="color:var(--qp-bad)">✘ ${r.msg}</span>`;
+    });
+
     document.getElementById('qp-btn-save').addEventListener('click', () => {
+      cfg.mode = document.querySelector('input[name=qp-mode]:checked')?.value || 'direct';
+      cfg.aiUrl = document.getElementById('qp-cfg-aiurl').value.trim().replace(/\/+$/, '') || DEFAULTS.aiUrl;
+      cfg.aiKey = document.getElementById('qp-cfg-aikey').value.trim();
+      cfg.aiModel = document.getElementById('qp-cfg-aimodel').value.trim() || 'gpt-4o-mini';
+      cfg.aiVision = document.getElementById('qp-cfg-aivision').checked;
       cfg.serverUrl = document.getElementById('qp-cfg-server').value.trim() || DEFAULTS.serverUrl;
       cfg.healthUrl = cfg.serverUrl.replace(/\/answer$/, '/health');
       cfg.accessKey = document.getElementById('qp-cfg-accesskey').value.trim();
@@ -260,7 +351,7 @@
       cfg.autoNext = document.getElementById('qp-cfg-next').checked;
       cfg.coexistOcs = document.getElementById('qp-cfg-ocs').checked;
       cfg.hotkey = document.getElementById('qp-cfg-hotkey').checked;
-      saveCfg(); log('配置已保存' + (cfg.viewOnly ? '（仅查看模式）' : '')); refreshUI();
+      saveCfg(); log(`配置已保存（${cfg.mode === 'direct' ? '直连 ' + cfg.aiUrl : '服务端 ' + cfg.serverUrl}）${cfg.viewOnly ? ' · 仅查看模式' : ''}`); refreshUI();
     });
     document.getElementById('qp-btn-siteon').addEventListener('click', () => { siteRules[host] = true; store.set('siteRules', siteRules); refreshUI(); log(`本站已启用：${host}`); });
     document.getElementById('qp-btn-siteoff').addEventListener('click', () => { siteRules[host] = false; store.set('siteRules', siteRules); refreshUI(); log(`本站已禁用：${host}`); });
@@ -270,8 +361,8 @@
       if (!q) return log('没抓到题目：可尝试填写自定义选择器');
       log(`抓到题：${(q.title || '(图片题)').slice(0, 50)} | 选项${q.options.length} | 图${q.images.length} | ${q.type}`);
       await prepareImages(q);
-      const r = await askServer(q, 0);
-      if (r && r.ok) { showCard(q, r); fillAnswer(q, r.answer); }
+      const r = await answerQuestion(q);
+      if (r && r.ok) { showCard(q, r); if (!cfg.viewOnly) fillAnswer(q, r.answer); }
       else log('✘ ' + (r && r.msg));
     });
     document.getElementById('qp-btn-batch').addEventListener('click', () => runBatch(true));
@@ -299,7 +390,7 @@
         serverOnline: svcOnline, serverDetail: svcDetail,
         stats, cfg: { ...cfg, accessKey: cfg.accessKey ? '(已填)' : '' },
         pageStats: { questions: detectAllQuestions().length, radios: document.querySelectorAll('input[type=radio]').length, checkboxes: document.querySelectorAll('input[type=checkbox]').length },
-        ocsDetected: detectOcs(),
+        assistantDetected: detectOcs(),
         recentLogs: logs.slice(-30)
       };
       const text = JSON.stringify(diag, null, 2);
@@ -322,11 +413,27 @@
     </svg>`;
   }
 
+  function aiConfigured() {
+    return cfg.mode === 'server' ? true : !!(cfg.aiUrl && cfg.aiKey);
+  }
+
   function refreshUI() {
     if (!fab) return;
-    const ocsPause = cfg.coexistOcs && detectOcs();
-    const active = cfg.enabled && siteEnabled() && !ocsPause;
-    fab.className = active ? 'on' : (ocsPause ? 'paused' : '');
+    // 首次引导：AI 未配置 → 悬浮球红点脉冲
+    const needsSetup = !aiConfigured();
+    const nudge = fab.querySelector('.qp-nudge');
+    if (needsSetup && !nudge) {
+      const d = document.createElement('div');
+      d.className = 'qp-nudge';
+      fab.appendChild(d);
+      fab.title = 'QuizPilot 智答领航 — 点开面板，第一步填 AI Key';
+    } else if (!needsSetup && nudge) {
+      nudge.remove();
+      fab.title = 'QuizPilot 智答领航';
+    }
+    const pausedByAssistant = cfg.coexistOcs && detectOcs();
+    const active = cfg.enabled && siteEnabled() && !pausedByAssistant;
+    fab.className = active ? 'on' : (pausedByAssistant ? 'paused' : '');
     const s = document.getElementById('qp-sitestate');
     if (s) s.textContent = siteEnabled() ? '已启用' : '已禁用';
     for (const [id, key] of [['qp-s1', 'asked'], ['qp-s2', 'ok'], ['qp-s3', 'fail'], ['qp-s4', 'filled']]) {
@@ -341,10 +448,17 @@
     if (!cfg.showCard && card) card.style.display = 'none';
   }
 
-  // ========================= 服务健康监测 =========================
+  // ========================= AI 状态监测（双模式） =========================
   let svcOnline = false;
   let svcDetail = '';
   function checkHealth() {
+    if (cfg.mode !== 'server') {
+      // 直连模式：有 Key 就绪，Key 不发探测请求（省 token）
+      svcOnline = !!(cfg.aiUrl && cfg.aiKey);
+      svcDetail = svcOnline ? `直连就绪 · ${cfg.aiModel} @ ${cfg.aiUrl.replace(/^https?:\/\//, '').slice(0, 30)}` : '直连未配置：面板里填 AI 地址和 Key';
+      paintHealth();
+      return;
+    }
     GM_xmlhttpRequest({
       method: 'GET', url: cfg.healthUrl || cfg.serverUrl.replace(/\/answer$/, '/health'), timeout: 6000,
       onload: r => {
@@ -383,13 +497,13 @@
     showCard._t = setTimeout(() => { card.style.display = 'none'; }, 12000);
   }
 
-  // ========================= OCS 检测 =========================
+  // ========================= 同类助手检测 =========================
   function detectOcs() {
     if (!cfg.coexistOcs) return false;
-    const el = document.querySelector('[id^="ocs-"], [class^="ocs-"], [id*="OCS"], script[src*="ocsjs"]');
+    const el = document.querySelector('[class*="question-guide"], [id*="answer-panel"], [class*="tiku"], [class*="answer-card"]');
     if (el && !detectOcs._logged) {
       detectOcs._logged = true;
-      log('检测到 OCS 网课助手，QuizPilot 待机（协同模式）。面板可关闭协同接管。');
+      log('检测到其他答题助手，QuizPilot 待机（协同模式）。面板可关闭协同接管。');
     }
     return !!el;
   }
@@ -560,6 +674,121 @@
     if (datas.length) log(`图片已抓取 ${datas.length}/${q.images.length} 张`);
   }
 
+  // ========================= 直连 AI（无需服务端） =========================
+  function directChat(messages, opt, timeout) {
+    opt = opt || {};
+    const url = (opt.url || cfg.aiUrl || '').replace(/\/+$/, '');
+    const key = opt.key !== undefined ? opt.key : cfg.aiKey;
+    const model = opt.model || cfg.aiModel || 'gpt-4o-mini';
+    const full = /\/v\d+$/.test(url) ? url + '/chat/completions' : url + '/v1/chat/completions';
+    return new Promise(resolve => {
+      GM_xmlhttpRequest({
+        method: 'POST', url: full,
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key },
+        data: JSON.stringify({ model, messages, temperature: 0, stream: false, max_tokens: 500 }),
+        timeout: timeout || 90000,
+        onload: r => {
+          if (r.status === 401) return resolve({ ok: false, msg: 'Key 无效或过期 (401)' });
+          if (r.status === 429) return resolve({ ok: false, msg: '触发限流 (429)，稍后再试' });
+          if (r.status >= 400) return resolve({ ok: false, msg: 'HTTP ' + r.status + ': ' + r.responseText.slice(0, 120) });
+          try {
+            const j = JSON.parse(r.responseText);
+            const content = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+            resolve({ ok: true, reply: typeof content === 'string' ? content : JSON.stringify(content) });
+          } catch (e) { resolve({ ok: false, msg: '返回解析失败: ' + e.message }); }
+        },
+        onerror: () => resolve({ ok: false, msg: '网络错误/地址不对（注意中转站是否允许浏览器跨域，反代站一般都允许）' }),
+        ontimeout: () => resolve({ ok: false, msg: '请求超时' })
+      });
+    });
+  }
+
+  const QP_SYSTEM_PROMPT = '你是网课答题助手。根据题目、选项和图片给出正确答案。规则：单选题只输出一个选项字母；多选题只输出多个字母连写（如 ABD）；判断题只输出「对」或「错」；填空题只输出要填写的文本本身。如果提供了题目截图，以截图内容为准。最终必须输出一个 JSON 对象：{"answer":"...","reason":"一句话理由"}';
+
+  function buildDirectMessages(q) {
+    const TYPE_NAME = { single: '单选题', multi: '多选题', judge: '判断题', completion: '填空题' };
+    let text = `题型：${TYPE_NAME[q.type] || '未声明（请根据选项数量推断）'}\n题目：${q.title || '（见图片）'}`;
+    if (q.options && q.options.length) {
+      text += '\n选项：\n' + q.options.map((o, i) => `${String.fromCharCode(65 + i)}. ${o}`).join('\n');
+    }
+    text += '\n请按系统指令输出 JSON。';
+    const msgs = [{ role: 'system', content: QP_SYSTEM_PROMPT }];
+    if (q.imageDataUrls && q.imageDataUrls.length) {
+      const content = [{ type: 'text', text }];
+      for (const d of q.imageDataUrls) content.push({ type: 'image_url', image_url: { url: d } });
+      msgs.push({ role: 'user', content });
+    } else {
+      msgs.push({ role: 'user', content: text });
+    }
+    return msgs;
+  }
+
+  // 从 AI 原文抢 JSON 答案（与服务端 parseAnswer 同逻辑的轻量版）
+  function parseDirectAnswer(raw) {
+    if (!raw) return null;
+    try { const j = JSON.parse(raw); if (j && j.answer) return j; } catch (_) {}
+    const m = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    if (m) { try { const j = JSON.parse(m[1].trim()); if (j && j.answer) return j; } catch (_) {} }
+    const brace = raw.match(/\{[\s\S]*\}/);
+    if (brace) { try { const j = JSON.parse(brace[0]); if (j && j.answer) return j; } catch (_) {} }
+    const line = raw.trim().split('\n')[0].trim();
+    return line ? { answer: line } : null;
+  }
+
+  // 按题型规整（与服务端 normalizeAnswer 同逻辑的轻量版）
+  function normalizeDirectAnswer(parsed, type, options) {
+    let a = String(parsed.answer || '').trim();
+    const t = (type || '').toLowerCase();
+    if (/single|单选/.test(t) && options.length) {
+      const L = a.match(/[A-Za-z]/);
+      if (L) { const i = L[0].toUpperCase().charCodeAt(0) - 65; if (i >= 0 && i < options.length) return [options[i]]; }
+      return [a];
+    }
+    if (/multi|多选/.test(t)) {
+      const letters = a.toUpperCase().match(/[A-Z]/g) || [];
+      const arr = [...new Set(letters.map(l => l.charCodeAt(0) - 65).filter(i => i >= 0 && i < options.length))].sort((x, y) => x - y).map(i => options[i]);
+      if (arr.length) return arr;
+      return a.split(/\s*[、,，;；\s]\s*/).filter(Boolean);
+    }
+    if (/judge|判断/.test(t)) {
+      if (/对|正确|true|是|√/i.test(a)) return ['正确', '对', '是', 'true'];
+      if (/错|错误|false|否|×/i.test(a)) return ['错误', '错', '否', 'false'];
+      if (/^A$/i.test(a)) return ['正确', '对', '是', 'true'];
+      if (/^B$/i.test(a)) return ['错误', '错', '否', 'false'];
+      return [a];
+    }
+    if (/completion|填空/.test(t)) return [a.replace(/^["'「『]|["'」』]$/g, '')];
+    // 未声明题型：猜
+    if (options.length === 2 && /^(对|错|正确|错误|是|否)/.test(a)) {
+      return /对|正确|是|√|true/i.test(a) ? ['正确', '对', '是', 'true'] : ['错误', '错', '否', 'false'];
+    }
+    if (options.length && /^[A-Z]{1,6}$/i.test(a)) {
+      const letters = a.toUpperCase().match(/[A-Z]/g) || [];
+      const arr = [...new Set(letters.map(l => l.charCodeAt(0) - 65).filter(i => i >= 0 && i < options.length))].sort((x, y) => x - y).map(i => options[i]);
+      if (arr.length) return arr;
+    }
+    return [a];
+  }
+
+  // ========================= 统一答题入口（双模式） =========================
+  async function answerQuestion(q) {
+    if (cfg.mode === 'server') {
+      const r = await askServer(q, 0);
+      if (r && r.ok) return { ok: true, answer: r.answer, reason: r.reason, via: r.via, ms: r.ms, cache: r.cache };
+      return { ok: false, msg: r && r.msg };
+    }
+    // 直连模式
+    if (!cfg.aiUrl || !cfg.aiKey) return { ok: false, msg: '直连模式：先在面板填 AI 地址和 Key' };
+    if (q.imageDataUrls && q.imageDataUrls.length && !cfg.aiVision) {
+      log('题目带图片但当前模型未勾「能看图」，将只按文字作答（可能不准）');
+    }
+    const r = await directChat(buildDirectMessages(q));
+    if (!r.ok) return { ok: false, msg: r.msg };
+    const parsed = parseDirectAnswer(r.reply);
+    if (!parsed) return { ok: false, msg: 'AI 返回里解析不到答案: ' + String(r.reply).slice(0, 80) };
+    return { ok: true, answer: normalizeDirectAnswer(parsed, q.type, q.options), reason: parsed.reason || '', via: cfg.aiModel, ms: null };
+  }
+
   // ========================= 服务端客户端 =========================
   function askServer(question, attempt) {
     attempt = attempt || 0;
@@ -684,7 +913,7 @@
     answered.add(fp);
     stats.asked++;
     await prepareImages(q);
-    const r = await askServer(q, 0);
+    const r = await answerQuestion(q);
     if (r && r.ok) {
       stats.ok++;
       showCard(q, r);
@@ -757,8 +986,8 @@
     buildUI();
     checkHealth();
     healthTimer = setInterval(checkHealth, 10000);
-    log(`QuizPilot v3.2.0 就绪 · 服务端${svcOnline ? '在线' : '检测中'} · 自动答题${cfg.enabled ? '开' : '关'} · 整卷${cfg.batchMode ? '开' : '关'}${cfg.viewOnly ? ' · 仅查看' : ''}`);
-    if (detectOcs()) log('提示：OCS 协同已开启，OCS 存在时本插件待机');
+    log(`QuizPilot v3.3.0 就绪 · ${cfg.mode === 'direct' ? '直连 ' + (cfg.aiModel || 'AI') + (cfg.aiKey ? '' : '（未填 Key）') : '服务端' + (svcOnline ? '在线' : '检测中')} · 自动答题${cfg.enabled ? '开' : '关'} · 整卷${cfg.batchMode ? '开' : '关'}${cfg.viewOnly ? ' · 仅查看' : ''}`);
+    if (detectOcs()) log('提示：助手协同已开启，检测到其他答题助手时本插件待机');
 
     observer = new MutationObserver(muts => {
       if (!cfg.enabled || busy) return;
@@ -767,6 +996,16 @@
     observer.observe(document.body, { childList: true, subtree: true });
     pollTimer = setInterval(() => { tick().catch(e => log('轮询异常：' + e.message)); }, Math.max(1500, cfg.intervalMs * 3));
     refreshUI();
+
+    // 首次使用引导：AI 未配置时自动弹开面板（每站点只弹一次）
+    if (!aiConfigured() && !store.get('onboardShown_' + host)) {
+      store.set('onboardShown_' + host, true);
+      setTimeout(() => {
+        if (panel && aiConfigured()) return; // 用户已手动配好就不打扰
+        if (panel) panel.style.display = 'block';
+        log('第一次使用：在「第一步」填入你的 AI 接口地址和 Key（DeepSeek 官方 Key、中转站 Key 或自建网页版反代均可），保存后即可答题');
+      }, 1200);
+    }
   }
 
   let lastUrl = location.href;
@@ -780,9 +1019,9 @@
     }
   }, 1000);
 
-  GM_registerMenuCommand('打开/关闭 QuizPilot 面板', () => { if (panel) panel.style.display = panel.style.display === 'block' ? 'none' : 'block'; });
-  GM_registerMenuCommand('立即整卷答一轮', () => runBatch(true));
-  GM_registerMenuCommand('切换自动答题', () => { cfg.enabled = !cfg.enabled; saveCfg(); log('自动答题：' + (cfg.enabled ? '开' : '关')); refreshUI(); });
+  gmMenu('打开/关闭 QuizPilot 面板', () => { if (panel) panel.style.display = panel.style.display === 'block' ? 'none' : 'block'; });
+  gmMenu('立即整卷答一轮', () => runBatch(true));
+  gmMenu('切换自动答题', () => { cfg.enabled = !cfg.enabled; saveCfg(); log('自动答题：' + (cfg.enabled ? '开' : '关')); refreshUI(); });
 
   if (document.readyState === 'complete' || document.readyState === 'interactive') setTimeout(boot, 800);
   else window.addEventListener('DOMContentLoaded', () => setTimeout(boot, 800));
