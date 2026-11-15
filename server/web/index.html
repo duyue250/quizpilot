@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>QuizPilot 智答领航 · 控制台</title>
+<style>
+  :root { --bg:#0b1220; --card:#121a2b; --line:#1f2b45; --txt:#e6edf7; --dim:#8aa0c0; --pri:#f59e0b; --pri2:#fbbf24; --ok:#34d399; --bad:#f87171; }
+  * { box-sizing:border-box; }
+  body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; background:radial-gradient(1200px 600px at 80% -10%,#1a2540 0%,var(--bg) 55%); color:var(--txt); margin:0; padding:28px 16px; }
+  .wrap { max-width:920px; margin:0 auto; }
+  .brand { display:flex; align-items:center; gap:12px; margin-bottom:18px; }
+  .brand img { width:44px; height:44px; }
+  .brand h1 { font-size:22px; margin:0; letter-spacing:1px; }
+  .brand small { color:var(--dim); display:block; font-size:12px; font-weight:normal; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px 20px; margin-bottom:16px; }
+  .card h2 { font-size:15px; margin:0 0 12px; color:var(--pri2); display:flex; align-items:center; gap:8px; }
+  .step { display:inline-flex; width:22px; height:22px; border-radius:50%; background:var(--pri); color:#1a1206; font-weight:bold; align-items:center; justify-content:center; font-size:12px; }
+  label { display:block; color:var(--dim); font-size:12px; margin:10px 0 4px; }
+  input[type=text], textarea, select { width:100%; background:#0a0f1c; color:var(--txt); border:1px solid var(--line); border-radius:8px; padding:9px 12px; font-size:13px; }
+  textarea { min-height:64px; resize:vertical; font-family:inherit; }
+  .row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  .up { border:1px dashed var(--line); border-radius:10px; padding:12px; margin-top:10px; }
+  .up .head { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .up .head b { font-size:13px; }
+  button { background:var(--pri); color:#1a1206; font-weight:bold; border:0; border-radius:8px; padding:9px 18px; font-size:13px; cursor:pointer; }
+  button:hover { background:var(--pri2); }
+  button.ghost { background:transparent; color:var(--dim); border:1px solid var(--line); font-weight:normal; }
+  button.ghost:hover { color:var(--txt); border-color:var(--dim); }
+  button.mini { padding:4px 10px; font-size:12px; border-radius:6px; }
+  pre { background:#070b14; border:1px solid var(--line); border-radius:8px; padding:12px; font-size:12px; overflow:auto; min-height:36px; white-space:pre-wrap; word-break:break-all; }
+  .ok { color:var(--ok); } .bad { color:var(--bad); } .dim { color:var(--dim); }
+  .pill { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; background:#0a0f1c; border:1px solid var(--line); }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  a { color:var(--pri2); }
+  .log { max-height:180px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="brand">
+    <img src="assets/logo.svg" alt="QuizPilot">
+    <div>
+      <h1>QuizPilot 智答领航</h1>
+      <small>本地 AI 答题服务 · 设置向导 & 控制台 · v3.0</small>
+    </div>
+    <span style="flex:1"></span>
+    <span class="pill" id="healthPill">检测中…</span>
+  </div>
+
+  <!-- 第 1 步：选择 AI 上游类型 -->
+  <div class="card">
+    <h2><span class="step">1</span> 接入你的 AI（三选一）</h2>
+    <div class="grid2">
+      <div>
+        <label>
+          <input type="radio" name="srctype" value="key" checked>
+          <b>有现成 Key（官方 API / 中转站）</b> —— 最稳，填地址和 Key 即可
+        </label>
+        <label>
+          <input type="radio" name="srctype" value="deepseek">
+          <b>DeepSeek 网页版反代</b> —— 免费额度，跑 <a href="proxy/deploy-deepseek.bat" target="_blank">proxy\deploy-deepseek.bat</a> 部署
+        </label>
+        <label>
+          <input type="radio" name="srctype" value="doubao">
+          <b>豆包网页版反代（支持看图）</b> —— 扫码登录自己的豆包账号，跑 <a href="proxy/deploy-doubao.bat" target="_blank">proxy\deploy-doubao.bat</a>
+        </label>
+      </div>
+      <div id="keyForm">
+        <label>接口地址 baseUrl（OpenAI 兼容，一般以 /v1 结尾）</label>
+        <input type="text" id="f-url" placeholder="https://api.deepseek.com/v1">
+        <label>API Key</label>
+        <input type="text" id="f-key" placeholder="sk-...">
+        <label>模型名</label>
+        <input type="text" id="f-model" placeholder="deepseek-chat / gpt-4o-mini / glm-4v ...">
+        <label><input type="checkbox" id="f-vision"> 该模型能看图片（视觉模型，图片题需要勾上）</label>
+      </div>
+      <div id="proxyTip" style="display:none; color:var(--dim); font-size:13px; line-height:1.8">
+        <p id="tip-deepseek" style="display:none">
+          ① 双击运行 <code>proxy\deploy-deepseek.bat</code>（自动克隆+装依赖+启动）<br>
+          ② 打开 <a href="http://localhost:8000/admin" target="_blank">http://localhost:8000/admin</a>（默认 admin/admin），<b>登录你的 DeepSeek 账号密码</b>，token 之后自动续期<br>
+          ③ 回到本页，下方地址填 <code>http://127.0.0.1:8000/v1</code>，Key 随便填 <code>sk-local</code>，模型 <code>deepseek-chat</code>
+        </p>
+        <p id="tip-doubao" style="display:none">
+          ① 双击运行 <code>proxy\deploy-doubao.bat</code>（Docker 部署，克隆+配置+启动）<br>
+          ② 按脚本提示：手机豆包 App <b>扫码登录</b>你自己的豆包账号（脚本拉起二维码），或按 README 抓 Cookie 填 .env<br>
+          ③ 回到本页，地址填 <code>http://127.0.0.1:8000/v1</code>，Key 填你在 .env 定的 <code>API_MASTER_KEY</code>，模型 <code>doubao</code>，勾上「能看图片」
+        </p>
+      </div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <button id="btnTest">先测一发连通性</button>
+      <span id="testOut" class="dim"></span>
+    </div>
+  </div>
+
+  <!-- 第 2 步：上游清单 -->
+  <div class="card">
+    <h2><span class="step">2</span> 上游清单（可多个，自动故障切换）</h2>
+    <div id="upList"></div>
+    <div class="row" style="margin-top:10px">
+      <button class="ghost mini" id="btnAddUp">+ 添加一个上游</button>
+      <button id="btnSave">保存并热生效</button>
+      <label style="margin:0 0 0 8px"><input type="checkbox" id="f-savedisk" checked> 同时写入 config.json（重启后仍生效）</label>
+    </div>
+  </div>
+
+  <!-- 第 3 步：测试答题 -->
+  <div class="card">
+    <h2><span class="step">3</span> 试一道题</h2>
+    <label>题型</label>
+    <select id="t-type">
+      <option value="single">单选</option><option value="multi">多选</option>
+      <option value="judge">判断</option><option value="completion">填空</option>
+    </select>
+    <label>题目</label>
+    <textarea id="t-title" placeholder="例如：下列哪个协议用于网页传输？"></textarea>
+    <label>选项（每行一个，判断/填空可留空）</label>
+    <textarea id="t-options" placeholder="FTP&#10;HTTP&#10;SMTP&#10;SSH"></textarea>
+    <label>题目截图（可选，发给视觉模型）</label>
+    <input type="file" id="t-imgs" accept="image/*" multiple>
+    <div class="row" id="t-prev" style="margin-top:6px"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="btnAsk">获取答案</button>
+      <span class="dim">返回的 answer 会同时验证 OCS 协议格式</span>
+    </div>
+    <pre id="askOut" style="margin-top:10px">等待请求…</pre>
+  </div>
+
+  <!-- 第 4 步：接入 OCS / 插件 -->
+  <div class="card">
+    <h2><span class="step">4</span> 接到答题端</h2>
+    <p style="font-size:13px; line-height:1.9; margin:0">
+      <b>A. OCS 网课助手</b>：OCS 面板 → 题库设置 → 自定义题库，粘贴
+      <code>D:\ocs\ocs-tiku-config.json</code> 内容（无需改动，地址就是本服务）。<br>
+      <b>B. QuizPilot 插件</b>：油猴安装 <code>userscript\quizpilot.user.js</code>，
+      悬浮球里服务端地址保持 <code id="srvUrl">http://127.0.0.1:8787/answer</code> 即可。<br>
+      <b>C. 独立调试</b>：本页第 3 步随时可验。
+    </p>
+  </div>
+
+  <!-- 运行日志 -->
+  <div class="card">
+    <h2>服务运行状态</h2>
+    <pre id="healthDetail" class="log">…</pre>
+  </div>
+</div>
+
+<script>
+let imgList = [];
+const $ = id => document.getElementById(id);
+const srv = '';
+
+// ---------- 上游类型切换 ----------
+document.querySelectorAll('input[name=srctype]').forEach(r => r.addEventListener('change', () => {
+  const v = document.querySelector('input[name=srctype]:checked').value;
+  $('keyForm').style.display = v === 'key' ? '' : 'none';
+  $('proxyTip').style.display = v === 'key' ? 'none' : '';
+  $('tip-deepseek').style.display = v === 'deepseek' ? '' : 'none';
+  $('tip-doubao').style.display = v === 'doubao' ? '' : 'none';
+  if (v === 'deepseek') applyPreset({ url: 'http://127.0.0.1:8000/v1', key: 'sk-local', model: 'deepseek-chat', vision: false });
+  if (v === 'doubao') applyPreset({ url: 'http://127.0.0.1:8000/v1', key: 'sk-your-master-key', model: 'doubao', vision: true });
+}));
+function applyPreset(p) {
+  $('f-url').value = p.url; $('f-key').value = p.key; $('f-model').value = p.model; $('f-vision').checked = p.vision;
+}
+
+// ---------- 上游清单 ----------
+let upstreams = [];
+async function loadConfig() {
+  try {
+    const j = await (await fetch(srv + '/config')).json();
+    if (j.ok) {
+      upstreams = j.config.upstreams.map(u => ({ name: u.name, baseUrl: u.baseUrl, apiKey: u.hasKey ? '__MASKED__' : '', model: u.model, vision: u.vision, masked: u.hasKey }));
+      renderUps();
+    }
+  } catch (e) { $('testOut').innerHTML = '<span class="bad">服务端未响应：' + e.message + '</span>'; }
+}
+function renderUps() {
+  const box = $('upList'); box.innerHTML = '';
+  upstreams.forEach((u, i) => {
+    const d = document.createElement('div');
+    d.className = 'up';
+    d.innerHTML = `
+      <div class="head"><b>${i + 1}. <input type="text" value="${u.name}" data-i="${i}" data-f="name" style="width:200px;background:transparent;border:0;color:var(--txt);font-size:13px"></b>
+        <span><button class="ghost mini" data-act="test" data-i="${i}">测试</button> <button class="ghost mini" data-act="del" data-i="${i}">删除</button></span></div>
+      <div class="grid2">
+        <div><label>地址</label><input type="text" value="${u.baseUrl}" data-i="${i}" data-f="baseUrl"></div>
+        <div><label>Key（留 __MASKED__ 表示不改动）</label><input type="text" value="${u.apiKey}" data-i="${i}" data-f="apiKey"></div>
+        <div><label>模型</label><input type="text" value="${u.model}" data-i="${i}" data-f="model"></div>
+        <div><label>&nbsp;</label><label style="margin-top:14px"><input type="checkbox" data-i="${i}" data-f="vision" ${u.vision ? 'checked' : ''}> 能看图（视觉）</label></div>
+      </div>
+      <pre class="tst" data-tst="${i}" style="display:none"></pre>`;
+    box.appendChild(d);
+  });
+  box.oninput = e => {
+    const i = +e.target.dataset.i, f = e.target.dataset.f;
+    if (f === 'vision') upstreams[i][f] = e.target.checked;
+    else { upstreams[i][f] = e.target.value; if (f === 'apiKey') upstreams[i].masked = false; }
+  };
+  box.onclick = async e => {
+    const act = e.target.dataset.act, i = +e.target.dataset.i;
+    if (act === 'del') { upstreams.splice(i, 1); renderUps(); }
+    if (act === 'test') {
+      const pre = box.querySelector(`[data-tst="${i}"]`); pre.style.display = ''; pre.textContent = '测试中…';
+      const u = upstreams[i];
+      const j = await (await fetch(srv + '/test-upstream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ index: i }) })).json();
+      pre.innerHTML = j.ok ? `<span class="ok">✔ ${j.msg} · ${j.ms}ms · 回复: ${j.reply}</span>` : `<span class="bad">✘ ${j.msg}</span>`;
+    }
+  };
+}
+$('btnAddUp').onclick = () => { upstreams.push({ name: '上游' + (upstreams.length + 1), baseUrl: '', apiKey: '', model: 'gpt-4o-mini', vision: false, masked: false }); renderUps(); };
+
+$('btnTest').onclick = async () => {
+  const v = document.querySelector('input[name=srctype]:checked').value;
+  $('testOut').textContent = '测试中…';
+  const body = v === 'key'
+    ? { baseUrl: $('f-url').value.trim(), apiKey: $('f-key').value.trim(), model: $('f-model').value.trim() || 'gpt-4o-mini' }
+    : { index: 0 };
+  try {
+    const j = await (await fetch(srv + '/test-upstream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    $('testOut').innerHTML = j.ok ? `<span class="ok">✔ ${j.msg} · ${j.ms}ms · 回复: ${j.reply}</span>` : `<span class="bad">✘ ${j.msg}</span>`;
+    if (j.ok && v === 'key') {
+      const exist = upstreams.find(u => u.baseUrl === $('f-url').value.trim());
+      if (!exist) upstreams.push({ name: '我的AI上游', baseUrl: $('f-url').value.trim(), apiKey: $('f-key').value.trim(), model: $('f-model').value.trim() || 'gpt-4o-mini', vision: $('f-vision').checked, masked: false });
+      renderUps();
+    }
+  } catch (e) { $('testOut').innerHTML = '<span class="bad">✘ ' + e.message + '</span>'; }
+};
+
+$('btnSave').onclick = async () => {
+  const valid = upstreams.filter(u => u.baseUrl);
+  if (!valid.length) return alert('至少要有一个填了地址的上游');
+  const j = await (await fetch(srv + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upstreams: valid, saveToDisk: $('f-savedisk').checked }) })).json();
+  $('testOut').innerHTML = j.ok ? `<span class="ok">✔ 已生效${j.saved ? '并写入 config.json' : '（仅本次运行）'}</span>` : `<span class="bad">✘ ${j.msg}</span>`;
+  loadConfig();
+};
+
+// ---------- 试答题 ----------
+$('t-imgs').addEventListener('change', e => {
+  imgList = []; $('t-prev').innerHTML = '';
+  [...e.target.files].forEach(f => { const r = new FileReader(); r.onload = ev => { imgList.push(ev.target.result); const im = document.createElement('img'); im.src = ev.target.result; im.style.cssText = 'max-width:180px;max-height:110px;border-radius:8px'; $('t-prev').appendChild(im); }; r.readAsDataURL(f); });
+});
+$('btnAsk').onclick = async () => {
+  const out = $('askOut'); out.textContent = '请求中…';
+  const body = {
+    title: $('t-title').value.trim(),
+    options: $('t-options').value.split('\n').map(s => s.trim()).filter(Boolean),
+    type: $('t-type').value,
+    images: imgList
+  };
+  try {
+    const j = await (await fetch(srv + '/answer', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })).json();
+    if (j.ok) {
+      const a = Array.isArray(j.answer) ? j.answer : [j.answer];
+      out.innerHTML = `<span class="ok" style="font-size:16px">✔ 答案：${a.join(' | ')}</span>\n` + (j.reason ? `理由：${j.reason}\n` : '') + `\n原始：${JSON.stringify(j, null, 2)}`;
+    } else out.innerHTML = `<span class="bad">✘ ${j.msg || '失败'}</span>`;
+  } catch (e) { out.innerHTML = `<span class="bad">✘ ${e.message}</span>`; }
+};
+
+// ---------- 健康 ----------
+async function health() {
+  try {
+    const j = await (await fetch(srv + '/health')).json();
+    $('healthPill').innerHTML = '<span class="ok">● 运行中</span>';
+    $('healthDetail').textContent = JSON.stringify(j, null, 2);
+  } catch (e) {
+    $('healthPill').innerHTML = '<span class="bad">● 未运行</span>';
+    $('healthDetail').textContent = '服务端未启动。运行 start-server.bat 或 node server/ai-answer-server.js';
+  }
+}
+health(); setInterval(health, 8000);
+loadConfig();
+</script>
+</body>
+</html>

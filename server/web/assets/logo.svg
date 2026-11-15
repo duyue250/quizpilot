@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- QuizPilot 智答领航 logo： amber 罗盘指针 + 导航环 -->
+  <defs>
+    <linearGradient id="qpRing" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f59e0b"/>
+      <stop offset="1" stop-color="#fbbf24"/>
+    </linearGradient>
+    <linearGradient id="qpNeedle" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbbf24"/>
+      <stop offset="1" stop-color="#d97706"/>
+    </linearGradient>
+  </defs>
+  <circle cx="32" cy="32" r="28" fill="#121a2b" stroke="url(#qpRing)" stroke-width="3.5"/>
+  <circle cx="32" cy="32" r="21" fill="none" stroke="#1f2b45" stroke-width="1.5"/>
+  <!-- 刻度 -->
+  <g stroke="#8aa0c0" stroke-width="2" stroke-linecap="round">
+    <line x1="32" y1="6.5" x2="32" y2="11"/>
+    <line x1="32" y1="53" x2="32" y2="57.5"/>
+    <line x1="6.5" y1="32" x2="11" y2="32"/>
+    <line x1="53" y1="32" x2="57.5" y2="32"/>
+  </g>
+  <!-- 指针（指向右上的答题航向） -->
+  <polygon points="32,32 45,13 36,30" fill="url(#qpNeedle)"/>
+  <polygon points="32,32 19,51 28,34" fill="#31415f"/>
+  <circle cx="32" cy="32" r="3.6" fill="#fbbf24" stroke="#121a2b" stroke-width="1.4"/>
+</svg>

@@ -1,0 +1,23 @@
+{
+  "port": 8787,
+  "requestTimeoutMs": 90000,
+  "maxConcurrent": 4,
+  "cacheSize": 2000,
+  "systemPrompt": "你是网课答题助手。根据题目、选项和图片给出正确答案。规则：单选题只输出一个选项字母；多选题只输出多个字母连写（如 ABD）；判断题只输出「对」或「错」；填空题只输出要填写的文本本身。如果提供了题目截图，以截图内容为准。最终必须输出一个 JSON 对象：{\"answer\":\"...\",\"reason\":\"一句话理由\"}",
+  "upstreams": [
+    {
+      "name": "主上游-OpenAI兼容中转/网页版反代",
+      "baseUrl": "https://YOUR-PROXY-ADDRESS/v1",
+      "apiKey": "sk-xxxxxxxx",
+      "model": "gpt-4o-mini",
+      "vision": true
+    },
+    {
+      "name": "备用上游-可再加一个",
+      "baseUrl": "https://BACKUP-PROXY/v1",
+      "apiKey": "sk-xxxxxxxx",
+      "model": "gpt-4o",
+      "vision": true
+    }
+  ]
+}

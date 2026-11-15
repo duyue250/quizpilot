@@ -1,0 +1,15 @@
+[
+  {
+    "name": "AI反代答题（本地服务端）",
+    "homepage": "http://127.0.0.1:8787/",
+    "url": "http://127.0.0.1:8787/ocs/search",
+    "method": "post",
+    "contentType": "json",
+    "data": {
+      "title": "${title}",
+      "type": "${type}",
+      "options": "${options}"
+    },
+    "handler": "return (res) => res.code === 200 ? res.answer : undefined"
+  }
+]

@@ -1,0 +1,18 @@
+# 含个人上游密钥的真实配置，勿提交（模板是 config.example.json）
+server/config.json
+server/config.json.backup
+
+# Node
+node_modules/
+npm-debug.log*
+
+# 反代克隆目录（用户自行部署）
+proxy/deepseek-free-api/
+proxy/doubao2api/
+proxy/doubao-2api/
+
+# 系统杂项
+Thumbs.db
+.DS_Store
+desktop.ini
+*.log
