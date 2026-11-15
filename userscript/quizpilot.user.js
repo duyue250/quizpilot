@@ -2,7 +2,7 @@
 // @name         QuizPilot 智答领航
 // @name:en      QuizPilot
 // @namespace    https://github.com/duyue250/quizpilot
-// @version      3.1.0
+// @version      3.2.0
 // @description  网课 AI 答题领航工具：整卷扫描、题目图片识别、答案卡片、选项高亮、服务状态监测。配合本地 QuizPilot 服务端使用，支持与 OCS 网课助手协同（通过其公开的自定义题库协议）。
 // @description:en AI quiz assistant for online-course platforms: whole-paper scanning, image questions via vision models, answer cards, option highlighting, server health monitor. Works with a local QuizPilot server; coexists with OCS via its public custom-tiku protocol.
 // @author       duyue250
@@ -42,6 +42,8 @@
  * 仓库: https://github.com/duyue250/quizpilot
  * 服务端(必装): 见仓库 README —— node server/ai-answer-server.js
  * ---------------------------------------------------------------
+ * v3.2.0: 访问密钥鉴权 / 仅查看模式 / 快捷键 Alt+Q·B·P /
+ *         诊断导出 / 答案卡片溯源（上游+耗时）
  * v3.1.0: 发布级打磨 —— 双语元数据、自动更新通道、图标、
  *         面板内仓库链接、错误兜底文案优化
  * v3.0.0: 答案卡片 / 服务状态灯 / 选项高亮 / amber 罗盘品牌
@@ -64,6 +66,7 @@
   const DEFAULTS = {
     serverUrl: 'http://127.0.0.1:8787/answer',
     healthUrl: 'http://127.0.0.1:8787/health',
+    accessKey: '',           // 服务端访问密钥（服务端 config.accessKey 启用时填）
     enabled: false,
     autoSubmit: false,
     autoNext: false,
@@ -76,6 +79,8 @@
     retryTimes: 1,
     showCard: true,        // 答案卡片开关
     highlight: true,       // 选项高亮开关
+    viewOnly: false,       // 仅查看模式：只弹卡片不点选
+    hotkey: true,          // 快捷键开关
     debug: true
   };
   const cfg = { ...DEFAULTS };
@@ -186,21 +191,25 @@
     panel = document.createElement('div');
     panel.id = 'qp-panel';
     panel.innerHTML = `
-      <h3>${svgCompass(18)} QuizPilot 智答领航 <span style="font-size:10px;color:var(--qp-dim)">v3.1.0</span>
+      <h3>${svgCompass(18)} QuizPilot 智答领航 <span style="font-size:10px;color:var(--qp-dim)">v3.2.0</span>
         <span style="flex:1"></span><span id="qp-dot"></span></h3>
       <div class="row" style="color:var(--qp-dim);font-size:11px"><span id="qp-health-text">服务状态检测中…</span>
         <span style="flex:1"></span><a href="https://github.com/duyue250/quizpilot" target="_blank" style="color:var(--qp-amber2);font-size:11px">GitHub ↗</a></div>
       <label>服务端地址</label>
       <input type="text" id="qp-cfg-server" value="${cfg.serverUrl}">
+      <label>访问密钥（服务端启用 accessKey 时填写，可留空）</label>
+      <input type="text" id="qp-cfg-accesskey" value="${cfg.accessKey}">
       <label>自定义题目容器选择器（可选）</label>
       <input type="text" id="qp-cfg-selector" value="${cfg.questionSelector}">
       <div class="row"><input type="checkbox" id="qp-cfg-enabled" ${cfg.enabled ? 'checked' : ''}><span>自动答题（全局）</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-batch" ${cfg.batchMode ? 'checked' : ''}><span>整卷批量模式</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-card" ${cfg.showCard ? 'checked' : ''}><span>答案弹出卡片</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-hl" ${cfg.highlight ? 'checked' : ''}><span>命中选项高亮</span></div>
+      <div class="row"><input type="checkbox" id="qp-cfg-viewonly" ${cfg.viewOnly ? 'checked' : ''}><span>仅查看模式（只弹卡片，不自动点选）</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-submit" ${cfg.autoSubmit ? 'checked' : ''}><span>答完自动提交（谨慎）</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-next" ${cfg.autoNext ? 'checked' : ''}><span>提交后自动下一题</span></div>
       <div class="row"><input type="checkbox" id="qp-cfg-ocs" ${cfg.coexistOcs ? 'checked' : ''}><span>OCS 协同（检测到 OCS 时待机）</span></div>
+      <div class="row"><input type="checkbox" id="qp-cfg-hotkey" ${cfg.hotkey ? 'checked' : ''}><span>快捷键：Alt+Q 开关自动 / Alt+B 整卷一轮</span></div>
       <div class="row">
         <span style="color:var(--qp-dim)">本站（${host}）：</span>
         <button class="btn ghost" id="qp-btn-siteon">启用本站</button>
@@ -224,6 +233,7 @@
         <button class="btn ghost" id="qp-btn-export">导出</button>
         <button class="btn ghost" id="qp-btn-import">导入</button>
         <button class="btn ghost" id="qp-btn-copylog">复制日志</button>
+        <button class="btn ghost" id="qp-btn-diag">导出诊断</button>
         <button class="btn ghost" id="qp-btn-clear">清日志</button>
       </div>
       <div id="qp-log"></div>
@@ -239,15 +249,18 @@
     document.getElementById('qp-btn-save').addEventListener('click', () => {
       cfg.serverUrl = document.getElementById('qp-cfg-server').value.trim() || DEFAULTS.serverUrl;
       cfg.healthUrl = cfg.serverUrl.replace(/\/answer$/, '/health');
+      cfg.accessKey = document.getElementById('qp-cfg-accesskey').value.trim();
       cfg.questionSelector = document.getElementById('qp-cfg-selector').value.trim();
       cfg.enabled = document.getElementById('qp-cfg-enabled').checked;
       cfg.batchMode = document.getElementById('qp-cfg-batch').checked;
       cfg.showCard = document.getElementById('qp-cfg-card').checked;
       cfg.highlight = document.getElementById('qp-cfg-hl').checked;
+      cfg.viewOnly = document.getElementById('qp-cfg-viewonly').checked;
       cfg.autoSubmit = document.getElementById('qp-cfg-submit').checked;
       cfg.autoNext = document.getElementById('qp-cfg-next').checked;
       cfg.coexistOcs = document.getElementById('qp-cfg-ocs').checked;
-      saveCfg(); log('配置已保存'); refreshUI();
+      cfg.hotkey = document.getElementById('qp-cfg-hotkey').checked;
+      saveCfg(); log('配置已保存' + (cfg.viewOnly ? '（仅查看模式）' : '')); refreshUI();
     });
     document.getElementById('qp-btn-siteon').addEventListener('click', () => { siteRules[host] = true; store.set('siteRules', siteRules); refreshUI(); log(`本站已启用：${host}`); });
     document.getElementById('qp-btn-siteoff').addEventListener('click', () => { siteRules[host] = false; store.set('siteRules', siteRules); refreshUI(); log(`本站已禁用：${host}`); });
@@ -277,6 +290,23 @@
       if (typeof GM_setClipboard === 'function') { GM_setClipboard(text); log('日志已复制'); }
       else navigator.clipboard?.writeText(text).then(() => log('日志已复制')).catch(() => {});
     });
+    document.getElementById('qp-btn-diag').addEventListener('click', () => {
+      const diag = {
+        time: new Date().toISOString(),
+        url: location.href, host,
+        version: '3.2.0',
+        serverUrl: cfg.serverUrl,
+        serverOnline: svcOnline, serverDetail: svcDetail,
+        stats, cfg: { ...cfg, accessKey: cfg.accessKey ? '(已填)' : '' },
+        pageStats: { questions: detectAllQuestions().length, radios: document.querySelectorAll('input[type=radio]').length, checkboxes: document.querySelectorAll('input[type=checkbox]').length },
+        ocsDetected: detectOcs(),
+        recentLogs: logs.slice(-30)
+      };
+      const text = JSON.stringify(diag, null, 2);
+      document.getElementById('qp-cfg-json').value = text;
+      if (typeof GM_setClipboard === 'function') GM_setClipboard(text);
+      log('诊断信息已生成到配置框并复制剪贴板（提 issue 时附上）');
+    });
     document.getElementById('qp-btn-clear').addEventListener('click', () => { logs.length = 0; if (logBox) logBox.textContent = ''; });
 
     refreshUI();
@@ -303,7 +333,7 @@
       const el = document.getElementById(id);
       if (el) el.textContent = stats[key];
     }
-    const map = { 'qp-cfg-enabled': 'enabled', 'qp-cfg-batch': 'batchMode', 'qp-cfg-card': 'showCard', 'qp-cfg-hl': 'highlight', 'qp-cfg-submit': 'autoSubmit', 'qp-cfg-next': 'autoNext', 'qp-cfg-ocs': 'coexistOcs' };
+    const map = { 'qp-cfg-enabled': 'enabled', 'qp-cfg-batch': 'batchMode', 'qp-cfg-card': 'showCard', 'qp-cfg-hl': 'highlight', 'qp-cfg-viewonly': 'viewOnly', 'qp-cfg-submit': 'autoSubmit', 'qp-cfg-next': 'autoNext', 'qp-cfg-ocs': 'coexistOcs', 'qp-cfg-hotkey': 'hotkey' };
     for (const [id, key] of Object.entries(map)) {
       const el = document.getElementById(id);
       if (el) el.checked = cfg[key];
@@ -342,8 +372,12 @@
     if (!cfg.showCard || !card) return;
     document.getElementById('qp-card-q').textContent = q.title || '(图片题)';
     const a = Array.isArray(result.answer) ? result.answer.join(' | ') : String(result.answer);
+    const meta = [];
+    if (result.via) meta.push('上游: ' + result.via);
+    if (result.ms) meta.push(result.ms + 'ms');
+    if (result.cache) meta.push('缓存');
     document.getElementById('qp-card-a').textContent = '✈ ' + a;
-    document.getElementById('qp-card-r').textContent = (result.reason || '') + (result.cache ? ' · 缓存' : '');
+    document.getElementById('qp-card-r').textContent = [(result.reason || ''), meta.join(' · ')].filter(Boolean).join(' ｜ ');
     card.style.display = 'block';
     clearTimeout(showCard._t);
     showCard._t = setTimeout(() => { card.style.display = 'none'; }, 12000);
@@ -529,11 +563,16 @@
   // ========================= 服务端客户端 =========================
   function askServer(question, attempt) {
     attempt = attempt || 0;
+    const payload = JSON.stringify({
+      title: question.title, options: question.options, type: question.type,
+      images: question.imageDataUrls || [],
+      accessKey: cfg.accessKey || undefined
+    });
     return new Promise(resolve => {
       GM_xmlhttpRequest({
         method: 'POST', url: cfg.serverUrl,
-        headers: { 'Content-Type': 'application/json' },
-        data: JSON.stringify({ title: question.title, options: question.options, type: question.type, images: question.imageDataUrls || [] }),
+        headers: { 'Content-Type': 'application/json', 'X-Access-Key': cfg.accessKey || '' },
+        data: payload,
         timeout: 120000,
         onload: r => { try { resolve(JSON.parse(r.responseText)); } catch (_) { resolve({ ok: false, msg: '返回异常: ' + r.responseText.slice(0, 100) }); } },
         onerror: () => resolve({ ok: false, msg: '请求失败（服务端离线？）', retry: true }),
@@ -650,6 +689,7 @@
       stats.ok++;
       showCard(q, r);
       log(`AI：${Array.isArray(r.answer) ? r.answer.join(' | ') : r.answer}${r.reason ? ' ｜ ' + r.reason : ''}`);
+      if (cfg.viewOnly) { log('仅查看模式：不自动点选'); return true; }
       return fillAnswer(q, r.answer);
     }
     stats.fail++;
@@ -680,6 +720,28 @@
     refreshUI();
   }
 
+  // ========================= 快捷键 =========================
+  document.addEventListener('keydown', e => {
+    if (!cfg.hotkey) return;
+    if (!e.altKey) return;
+    const k = (e.key || '').toLowerCase();
+    if (k === 'q') {
+      e.preventDefault();
+      cfg.enabled = !cfg.enabled; saveCfg();
+      log(`快捷键 Alt+Q：自动答题${cfg.enabled ? '开' : '关'}`);
+      refreshUI();
+    } else if (k === 'b') {
+      e.preventDefault();
+      log('快捷键 Alt+B：整卷答一轮');
+      runBatch(true);
+    } else if (k === 'p') {
+      e.preventDefault();
+      cfg.viewOnly = !cfg.viewOnly; saveCfg();
+      log(`快捷键 Alt+P：仅查看模式${cfg.viewOnly ? '开（只弹卡片不点选）' : '关'}`);
+      refreshUI();
+    }
+  }, true);
+
   // ========================= 启动 =========================
   let bootDone = false, observer = null, pollTimer = null, debounceTimer = null, healthTimer = null;
 
@@ -695,7 +757,7 @@
     buildUI();
     checkHealth();
     healthTimer = setInterval(checkHealth, 10000);
-    log(`QuizPilot v3.1.0 就绪 · 服务端${svcOnline ? '在线' : '检测中'} · 自动答题${cfg.enabled ? '开' : '关'} · 整卷${cfg.batchMode ? '开' : '关'}`);
+    log(`QuizPilot v3.2.0 就绪 · 服务端${svcOnline ? '在线' : '检测中'} · 自动答题${cfg.enabled ? '开' : '关'} · 整卷${cfg.batchMode ? '开' : '关'}${cfg.viewOnly ? ' · 仅查看' : ''}`);
     if (detectOcs()) log('提示：OCS 协同已开启，OCS 存在时本插件待机');
 
     observer = new MutationObserver(muts => {

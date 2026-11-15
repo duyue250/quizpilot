@@ -5,7 +5,7 @@
 > 网课 AI 答题领航工具 —— 整卷扫描 · 图片题视觉识别 · 答案卡片 · 选项高亮 · 服务状态监测
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-f59e0b.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-3.1.0-fbbf24.svg)](userscript/quizpilot.user.js)
+[![Version](https://img.shields.io/badge/version-3.2.0-fbbf24.svg)](userscript/quizpilot.user.js)
 [![Server](https://img.shields.io/badge/server-Node.js%20零依赖-34d399.svg)](server/ai-answer-server.js)
 [![平台](https://img.shields.io/badge/平台-学习通/智慧树/职教云/MOOC-1f2b45.svg)](#支持平台)
 
@@ -23,6 +23,10 @@
 | ✨ | **选项高亮**：命中的选项 amber 描边，一目了然 |
 | 📡 | **服务状态灯**：服务端在线/离线/上游熔断实时显示 |
 | 🔁 | **重试与缓存**：请求指数退避重试；服务端 LRU 缓存重复题秒回 |
+| 🔑 | **访问密钥**：服务端可设 accessKey，共享给同学时防滥用 |
+| 👀 | **仅查看模式**：只弹答案卡片不自动点选，手动确认再答 |
+| ⌨️ | **快捷键**：Alt+Q 开关自动答题 / Alt+B 整卷一轮 / Alt+P 切换仅查看 |
+| 🩺 | **诊断导出**：一键生成环境+日志诊断包，贴 issue 好排查 |
 | 🤝 | **OCS 协同**：检测到 OCS 面板自动待机，双引擎不打架 |
 | 🧩 | **双接入**：独立油猴插件，或作为 OCS 自定义题库（二选一或叠加） |
 | ⚙️ | **设置向导**：服务端控制台网页里测连通、热更新上游配置 |

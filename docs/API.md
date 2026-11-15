@@ -6,14 +6,32 @@
 
 | 接口 | 方法 | 用途 |
 |---|---|---|
-| `/answer` | POST | 通用答题：`{title, options[], type, images[dataURL]}` → `{ok, answer[], reason, cache}` |
+| `/answer` | POST | 通用答题：`{title, options[], type, images[dataURL]}` → `{ok, answer[], reason, via, ms, cache}` |
 | `/ocs/search` | POST | OCS AnswererWrapper 专用：`{title, type, options}` → `{code:200, answer[], judge}` |
 | `/search/text` | POST | 兼容旧自定义题库协议 → `{code:200/201, answer[]}` |
 | `/search/img` | POST | 图片题：`{images[dataURL]}` → `{code, answer[]}` |
-| `/config` | GET/POST | 设置向导：读取/热更新上游（POST 可选 `saveToDisk` 写入 config.json） |
+| `/config` | GET/POST | 设置向导：读取/热更新上游与 accessKey（POST 可选 `saveToDisk` 写入 config.json） |
 | `/test-upstream` | POST | 上游连通性测试：`{index}` 或 `{baseUrl, apiKey, model}` → `{ok, ms, reply}` |
-| `/health` | GET | 状态/统计/上游熔断情况 |
+| `/health` | GET | 状态/统计/每上游统计/熔断情况 |
 | `/assets/*` | GET | 控制台静态资源（logo 等，带路径穿越防护） |
+
+## 访问密钥（可选鉴权）
+
+`config.json` 或控制台里设置 `accessKey` 后，所有答题接口（/answer、/ocs/search、/search/text、/search/img）需携带密钥，三选一：
+
+```
+请求头  X-Access-Key: 你的密钥
+URL    ?key=你的密钥
+请求体  {"accessKey": "你的密钥", ...}
+```
+
+未带或错误 → `/answer` 返回 HTTP 401；OCS 兼容接口返回 `{code:201}`（OCS 视为无答案）。
+`/health`、控制台页面不鉴权（仅本机查看状态用）。
+
+## 答案溯源字段
+
+`/answer` 成功响应带 `via`（实际使用的上游名）和 `ms`（该上游耗时），
+`/health` 的 `upstreamStats` 汇总每个上游的 ok/fail/avgMs，方便观察哪个反代快、哪个在摸鱼。
 
 `type` 取值：`single` 单选 / `multi` 多选 / `judge` 判断 / `completion` 填空 / `unknown`。
 返回 `answer` 永远是数组；判断题双写 `["正确","对","是","true"]` 提高各平台匹配率。

@@ -104,6 +104,8 @@
       <button id="btnSave">保存并热生效</button>
       <label style="margin:0 0 0 8px"><input type="checkbox" id="f-savedisk" checked> 同时写入 config.json（重启后仍生效）</label>
     </div>
+    <label style="margin-top:12px">访问密钥 accessKey（可选：设置后所有答题请求需携带，防共享被滥用；插件面板里填同一密钥）</label>
+    <input type="text" id="f-accesskey" placeholder="留空 = 不启用鉴权">
   </div>
 
   <!-- 第 3 步：测试答题 -->
@@ -232,7 +234,7 @@ $('btnTest').onclick = async () => {
 $('btnSave').onclick = async () => {
   const valid = upstreams.filter(u => u.baseUrl);
   if (!valid.length) return alert('至少要有一个填了地址的上游');
-  const j = await (await fetch(srv + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upstreams: valid, saveToDisk: $('f-savedisk').checked }) })).json();
+  const j = await (await fetch(srv + '/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ upstreams: valid, accessKey: $('f-accesskey').value.trim(), saveToDisk: $('f-savedisk').checked }) })).json();
   $('testOut').innerHTML = j.ok ? `<span class="ok">✔ 已生效${j.saved ? '并写入 config.json' : '（仅本次运行）'}</span>` : `<span class="bad">✘ ${j.msg}</span>`;
   loadConfig();
 };

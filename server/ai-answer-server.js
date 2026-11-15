@@ -86,6 +86,38 @@ function maskKey(k) {
 }
 
 // ---------------------------------------------------------------------------
+// 访问密钥（可选）：config.accessKey 设置后，答题接口需携带
+//   header X-Access-Key ｜ URL ?key= ｜ body.accessKey   三选一
+// 供把服务端共享给同学/多设备时防滥用。/health 与控制台不鉴权。
+// ---------------------------------------------------------------------------
+function checkAuth(req, u, body) {
+  const need = String(cfg.accessKey || '').trim();
+  if (!need) return true;
+  const given = (req.headers['x-access-key'] || u.searchParams.get('key') || (body && body.accessKey) || '').trim();
+  return given === need;
+}
+function unauthorized(res) {
+  return json(res, 401, { ok: false, code: 401, msg: '访问密钥错误：在服务端地址后加 ?key=密钥，或请求头 X-Access-Key' });
+}
+
+// ---------------------------------------------------------------------------
+// 每上游统计：name -> { ok, fail, msTotal }
+// ---------------------------------------------------------------------------
+const upstreamStats = new Map();
+function bumpUpstream(name, ok, ms) {
+  const s = upstreamStats.get(name) || { ok: 0, fail: 0, msTotal: 0 };
+  if (ok) s.ok++; else s.fail++;
+  s.msTotal += ms || 0;
+  upstreamStats.set(name, s);
+}
+function upstreamStatsView() {
+  return [...upstreamStats.entries()].map(([name, s]) => ({
+    name, ok: s.ok, fail: s.fail,
+    avgMs: s.ok + s.fail ? Math.round(s.msTotal / (s.ok + s.fail)) : null
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // 上游选择：简单故障隔离，连续失败 3 次熔断 60 秒
 // ---------------------------------------------------------------------------
 function upstreamAvailable(u) {
@@ -292,6 +324,7 @@ async function askAI(title, options, imagesBase64, type, depth) {
 
   let lastErr = null;
   for (const u of upstreams) {
+    const t0 = Date.now();
     try {
       const payload = JSON.stringify({
         model: u.model || 'gpt-4o-mini',
@@ -323,11 +356,15 @@ async function askAI(title, options, imagesBase64, type, depth) {
       const parsed = parseAnswer(typeof raw === 'string' ? raw : JSON.stringify(raw));
       if (!parsed) throw new Error('AI 返回里解析不到答案: ' + String(raw).slice(0, 200));
       markSuccess(u);
+      bumpUpstream(u.name, true, Date.now() - t0);
+      parsed._via = u.name;
+      parsed._ms = Date.now() - t0;
       return parsed;
     } catch (e) {
       lastErr = e;
       console.warn(`[ai] 上游[${u.name}] 失败: ${e.message}`);
       markFailure(u);
+      bumpUpstream(u.name, false, Date.now() - t0);
       await sleep(300);
     }
   }
@@ -396,7 +433,12 @@ const server = http.createServer(async (req, res) => {
 
   // ---- 健康检查 ----
   if (p === '/health') {
-    return json(res, 200, { ok: true, uptime: (Date.now() - stats.startTime) / 1000, stats, upstreams: liveUpstreams().map(x => ({ name: x.name, vision: !!x.vision, circuit: !upstreamAvailable(x) })) });
+    return json(res, 200, {
+      ok: true, version: '3.2.0', uptime: (Date.now() - stats.startTime) / 1000,
+      stats, upstreamStats: upstreamStatsView(),
+      accessKeyRequired: !!String(cfg.accessKey || '').trim(),
+      upstreams: liveUpstreams().map(x => ({ name: x.name, vision: !!x.vision, circuit: !upstreamAvailable(x) }))
+    });
   }
 
   // ---- 主接口：题目 -> 答案 ----
@@ -404,6 +446,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const rawBody = await readBody(req);
       const body = JSON.parse(rawBody || '{}');
+      if (!checkAuth(req, u, body)) return unauthorized(res);
       const title = String(body.title || body.question || '').trim();
       const options = Array.isArray(body.options) ? body.options.map(String) : [];
       const images = Array.isArray(body.images) ? body.images : [];
@@ -421,9 +464,10 @@ const server = http.createServer(async (req, res) => {
       stats.total++;
       const parsed = await withSlot(() => askAI(title, options, images, type));
       const norm = normalizeAnswer(parsed, type, options);
+      norm.via = parsed._via; norm.ms = parsed._ms;
       answerCache.set(key, norm);
       stats.success++;
-      console.log(`[ok] Q=${title.slice(0, 40)}... A=${Array.isArray(norm.answer) ? norm.answer.join('|') : norm.answer}`);
+      console.log(`[ok] Q=${title.slice(0, 40)}... A=${Array.isArray(norm.answer) ? norm.answer.join('|') : norm.answer} via=${parsed._via} ${parsed._ms}ms`);
       return json(res, 200, { ok: true, cache: false, ...norm });
     } catch (e) {
       stats.fail++;
@@ -437,6 +481,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/search/text' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
+      if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
       // OCS 传来的字段: title(题目) options(数组, 选项) type(题型)
       const title = String(body.title || '').trim();
       const options = Array.isArray(body.options) ? body.options.map(String) : [];
@@ -466,6 +511,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/ocs/search' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
+      if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
       const title = String(body.title || body.question || '').trim();
       let options = [];
       if (Array.isArray(body.options)) options = body.options.map(String);
@@ -496,6 +542,7 @@ const server = http.createServer(async (req, res) => {
   if (p === '/search/img' && req.method === 'POST') {
     try {
       const body = JSON.parse(await readBody(req) || '{}');
+      if (!checkAuth(req, u, body)) return json(res, 200, { code: 201, msg: '访问密钥错误' });
       // OCS 图片题: body.img 或 body.images —— base64 数组
       const imgs = Array.isArray(body.images) ? body.images : (body.img ? [body.img] : []);
       const title = String(body.title || '').trim();
@@ -513,7 +560,7 @@ const server = http.createServer(async (req, res) => {
 
   // ---- 设置向导：读取/保存配置（可热生效，可落盘） ----
   if (p === '/config' && req.method === 'GET') {
-    const safe = { port: PORT, maxConcurrent: MAX_CONCURRENT, systemPrompt: cfg.systemPrompt || '', upstreams: liveUpstreams().map(u => ({ name: u.name, baseUrl: u.baseUrl, apiKeyMasked: maskKey(u.apiKey), hasKey: !!u.apiKey, model: u.model, vision: !!u.vision })) };
+    const safe = { port: PORT, maxConcurrent: MAX_CONCURRENT, systemPrompt: cfg.systemPrompt || '', accessKeySet: !!String(cfg.accessKey || '').trim(), upstreams: liveUpstreams().map(u => ({ name: u.name, baseUrl: u.baseUrl, apiKeyMasked: maskKey(u.apiKey), hasKey: !!u.apiKey, model: u.model, vision: !!u.vision })) };
     return json(res, 200, { ok: true, config: safe, configSavedToDisk: fs.existsSync(CFG_PATH) });
   }
 
@@ -542,6 +589,7 @@ const server = http.createServer(async (req, res) => {
 
       cfg.upstreams = cleaned;
       if (typeof body.systemPrompt === 'string' && body.systemPrompt.trim()) cfg.systemPrompt = body.systemPrompt.trim();
+      if (body.accessKey !== undefined) cfg.accessKey = String(body.accessKey || '').trim();
       if (Number(body.port) && Number(body.port) !== PORT) {
         return json(res, 400, { ok: false, msg: 'port 修改需编辑 config.json 后重启服务端' });
       }
@@ -553,11 +601,12 @@ const server = http.createServer(async (req, res) => {
           : JSON.parse(fs.readFileSync(path.join(__dirname, 'config.example.json'), 'utf8'));
         disk.upstreams = cleaned;
         if (cfg.systemPrompt) disk.systemPrompt = cfg.systemPrompt;
+        disk.accessKey = cfg.accessKey || '';
         fs.copyFileSync(CFG_PATH, CFG_PATH + '.backup');
         fs.writeFileSync(CFG_PATH, JSON.stringify(disk, null, 2), 'utf8');
         saved = true;
       }
-      console.log(`[config] 上游已更新: ${cleaned.map(u => u.name).join(', ')}${saved ? '（已写入 config.json）' : '（仅本次运行生效）'}`);
+      console.log(`[config] 上游已更新: ${cleaned.map(u => u.name).join(', ')}${saved ? '（已写入 config.json）' : '（仅本次运行生效）'}${cfg.accessKey ? ' · 访问密钥已启用' : ''}`);
       return json(res, 200, { ok: true, saved, upstreams: cleaned.map(u => ({ name: u.name, baseUrl: u.baseUrl, model: u.model, vision: u.vision })) });
     } catch (e) {
       return json(res, 400, { ok: false, msg: e.message });
